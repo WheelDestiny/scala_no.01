@@ -9,7 +9,7 @@ object Scala06_Tuple {
     //将无关的数据当成一个整体来使用
     //元组中最多存放22个元素
     val tuple = ("name", 20, true)
-//    println(tuple._1)
+//    println(tuple)
 //    println(tuple._2)
 //    println(tuple._3)
 
