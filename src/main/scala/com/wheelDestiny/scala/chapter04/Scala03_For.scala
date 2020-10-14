@@ -14,6 +14,7 @@ object Scala03_For {
     for (i <- Range(0,5)){
       println(i)
     }
+
     //第三个参数是增长的步长
     for (i <- Range(0,5,2)){
       println(i)
