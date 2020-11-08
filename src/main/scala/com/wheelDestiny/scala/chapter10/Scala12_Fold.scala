@@ -1,5 +1,4 @@
 package com.wheelDestiny.scala.chapter10
-
 object Scala12_Fold {
   def main(args: Array[String]): Unit = {
     val list = List(1, 2, 3, 4)
@@ -16,6 +15,9 @@ object Scala12_Fold {
     println(list.foldRight(t)(_-_))
     //将每个步骤记录下来从右到左
     println(list.scanRight(t)(_ - _))
+
+
+
 
 
   }
