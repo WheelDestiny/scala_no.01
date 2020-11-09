@@ -1,9 +1,7 @@
 package com.wheelDestiny.scala.chapter16
 
 import java.io.{File, PrintWriter}
-
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
-
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
@@ -28,12 +26,12 @@ class WordCountInputFormat(reduceNum:Int) extends Actor{
   }
 
   override def receive: Receive = {
-    case pathStr:String =>{
+    case pathStr:(String, String) =>{
       //读取文件路径
-      val path = new File(pathStr)
+      val path = new File(pathStr._1)
       val files: Iterator[File] = path.listFiles().toIterator
       //创建outputFormat线程
-      val wordCountOutPutFormatRef: ActorRef = actorSystem.actorOf(Props[WordCountOutputFormat](new WordCountOutputFormat(reduceNum)), s"WordCountOutPutFormat")
+      val wordCountOutPutFormatRef: ActorRef = actorSystem.actorOf(Props[WordCountOutputFormat](new WordCountOutputFormat(reduceNum,pathStr._2)), s"WordCountOutPutFormat")
 
       var fileNum = 0
       var filePaths =new ArrayBuffer[File]()
@@ -76,7 +74,7 @@ class WordCountMapper(reduceActorRefs:ArrayBuffer[ActorRef],failPath:String) ext
       //遍历所有的string转化为(word,1)，把word相同的元组发送给同一个reducer
       for(i <- 0 until list.length){
         val key = list(i)
-        //模仿hashPartitioner计算分区，实际上这种分区方式大概率会数据倾斜
+        //模仿hashPartitioner计算分区，实际上这种分区方式大概率会数据倾斜，解决方式主要是重新分区，重新设计key
         val pNum: Int = (key.hashCode & Integer.MAX_VALUE) % reduceActorRefs.size
         reduceActorRefs(pNum) ! Result(key,1)
 
@@ -129,7 +127,7 @@ class WordCountReducer(mapperNum:Int, outputFormatRef:ActorRef,id:Int) extends A
  * OutputFormat 把所有reducer传来的数据记录合并到一起，当所有的reducer的数据都被记录之后打印
  * @param reduceNum reducer的总个数，用来判断是否所有的reducer都计算完毕
  */
-class WordCountOutputFormat(reduceNum:Int) extends Actor {
+class WordCountOutputFormat(reduceNum:Int,outputPath:String) extends Actor {
   //保存reducer传来的数据
   private var outputRes : mutable.HashMap[String, Long]= _
   //记录已经计算结束的reducer
@@ -145,9 +143,14 @@ class WordCountOutputFormat(reduceNum:Int) extends Actor {
       //每次传入的hashmap做一个合并
       res.foldLeft(outputRes)( (outputRes,resKV) => {
         //因为实际上相同的key都被分到一个reduce中统计，所以，这里可以不用做累加判断，直接合并就可以了
+        //但是如果考虑到通用性以及解决数据倾斜的问题，那么我们还是要做累加判断的
         //还有一个问题。。。
-        outputRes.put(resKV._1,resKV._2)
-//        outputRes.put(resKV._1,outputRes.getOrElse(resKV._1,0)+resKV._2)  这里有个报错，实在是没想明白
+//        outputRes.put(resKV._1,resKV._2)
+        val l: Long = outputRes.getOrElse(resKV._1, 0)
+        val l1: Long = resKV._2
+        val l2:Long=l+l1
+        outputRes.put(resKV._1,l2)
+//        这里有个报错，实在是没想明白
         outputRes
       })
       //每次传输说明一个reduce计算完毕
@@ -155,7 +158,7 @@ class WordCountOutputFormat(reduceNum:Int) extends Actor {
       //如果计算完毕的reducer数量等于全部的reduce数量，说明全部计算完毕
       if(endReducerNum == reduceNum){
         println(outputRes)
-        val writer = new PrintWriter(new File("D:/output/WordCountRes.txt"))
+        val writer = new PrintWriter(new File(s"${outputPath}/WordCountRes.txt"))
         for(kv <- outputRes){
           writer.println(kv._1+"\t"+kv._2)
         }
@@ -172,6 +175,7 @@ object AkkaWordCountMR {
   def main(args: Array[String]): Unit = {
     val driver = ActorSystem("WordCountDriver")
     val wordCountActor: ActorRef = driver.actorOf(Props[WordCountInputFormat](new WordCountInputFormat(4)), "driver")
-    wordCountActor ! "D:/input"
+    val path: (String, String) = ("D:/input", "D:/output")
+    wordCountActor ! path
   }
 }
