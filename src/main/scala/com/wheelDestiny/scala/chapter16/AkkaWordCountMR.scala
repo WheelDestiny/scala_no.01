@@ -41,7 +41,7 @@ class WordCountInputFormat(reduceNum:Int) extends Actor{
       }
 
       for(i <- 1 to reduceNum){
-        val wcReducer: ActorRef = actorSystem.actorOf(Props[WordCountReducer](new WordCountReducer(fileNum, wordCountOutPutFormatRef,i)), s"reducer${i}")
+        val wcReducer: ActorRef = actorSystem.actorOf(Props[WordCountReducer](new WordCountReducer(fileNum, wordCountOutPutFormatRef)), s"reducer${i}")
         reduceRefList+=wcReducer
       }
 
@@ -95,7 +95,7 @@ class WordCountMapper(reduceActorRefs:ArrayBuffer[ActorRef],failPath:String) ext
  * @param mapperNum       mapper个数，用来保证计算时所有的mapper都已经计算完毕
  * @param outputFormatRef outputFormat的地址
  */
-class WordCountReducer(mapperNum:Int, outputFormatRef:ActorRef,id:Int) extends Actor{
+class WordCountReducer(mapperNum:Int, outputFormatRef:ActorRef) extends Actor{
   //用来保存mapper发送的数据的容器
   private var res : mutable.HashMap[String, Long]= _
   //记录已经完成计算的mapper的数量
@@ -108,14 +108,11 @@ class WordCountReducer(mapperNum:Int, outputFormatRef:ActorRef,id:Int) extends A
   override def receive: Receive = {
     //当接收到mapper发送的数据时，把数据汇总到res中
     case Result(kv) => {
-      println(id+"---"+kv)
       res.put(kv._1,res.getOrElse(kv._1, 0L) + kv._2)
-      println(id+"---"+res)
     }
     //当接收到mapper发送的结束标记时
     case "MapEnd" =>{
       endMapNum+=1
-      println(id+"---"+endMapNum+"----"+mapperNum)
       //当结束计算的mapper数量等于总mapper数量时，将汇总的数据发送给outputFormat
       if(endMapNum == mapperNum){
         outputFormatRef ! reducerResult(res)
@@ -141,15 +138,12 @@ class WordCountOutputFormat(reduceNum:Int,outputPath:String) extends Actor {
   override def receive: Receive = {
     case reducerResult(res) => {
       //每次传入的hashmap做一个合并
-      res.foldLeft(outputRes)( (outputRes,resKV) => {
+      res.foldLeft(outputRes:mutable.HashMap[String, Long])( (outputRes:mutable.HashMap[String, Long],resKV:(String,Long)) => {
         //因为实际上相同的key都被分到一个reduce中统计，所以，这里可以不用做累加判断，直接合并就可以了
         //但是如果考虑到通用性以及解决数据倾斜的问题，那么我们还是要做累加判断的
         //还有一个问题。。。
-//        outputRes.put(resKV._1,resKV._2)
-        val l: Long = outputRes.getOrElse(resKV._1, 0)
-        val l1: Long = resKV._2
-        val l2:Long=l+l1
-        outputRes.put(resKV._1,l2)
+        //细节是在用getOrElse()方法给初始值的时候，要保证给的初始值类型和原map的值类型相同，因为默认的隐式转换并不一定可靠
+        outputRes+=((resKV._1 -> (outputRes.getOrElse(resKV._1, 0L) + resKV._2)))
 //        这里有个报错，实在是没想明白
         outputRes
       })
